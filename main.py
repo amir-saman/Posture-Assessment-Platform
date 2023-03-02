@@ -2,7 +2,7 @@ import cv2
 import time
 import math as m
 import mediapipe as mp
-
+from notify_run import Notify
 
 
 # Calculate distance
@@ -19,12 +19,13 @@ def findAngle(x1, y1, x2, y2):
     return degree
 
 
-data = []
-score = 0
+# Initialise Notify
+notify = Notify()
+run_once = 0
 
 # Function to send alert when bad posture detected
-def sendWarning():
-    pass
+# def sendWarning():
+#     pass
 
 
 # Initilise bad frame counter
@@ -117,7 +118,6 @@ while cap.isOpened():
 
     # Decide if the posture is good or bad
     if neck_angle < 40 and torso_angle < 10:
-        data.append((round((time.time() - start), 2), score + 1))
         bad_frames = 0
 
         cv2.putText(image, angle_text_string, (10, 30), font, 0.9, light_green, 2)
@@ -130,10 +130,9 @@ while cap.isOpened():
         cv2.line(image, (l_hip_x, l_hip_y), (l_shldr_x, l_shldr_y), green, 4)
         cv2.line(image, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), green, 4)
 
-# extract joint angles
-    else:
-        data.append((round((time.time() - start), 2), score - 1))
+        time.sleep(0.25)
 
+    else:
         bad_frames += 1
 
         cv2.putText(image, angle_text_string, (10, 30), font, 0.9, red, 2)
@@ -146,22 +145,29 @@ while cap.isOpened():
         cv2.line(image, (l_hip_x, l_hip_y), (l_shldr_x, l_shldr_y), red, 4)
         cv2.line(image, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), red, 4)
 
+        time.sleep(0.25)
 
     # Calculate the duration of posture
     bad_time = (1 / fps) * bad_frames
 
-    # When posture is bad for a certain amount of time then a warning is sent
-    if bad_time > 3:
-        sendWarning()
 
+    # If you stay in bad posture for more than x seconds send warning
+
+    if bad_time > 3:
+        # sendWarning()
+        if run_once == 0:
+            notify.send('test')
+            run_once = 1
+    else:
+        run_once = 0
+
+    #########################################################################################
 
     cv2.imshow('Posture Assessment', image)
     if cv2.waitKey(5) & 0xFF == ord('q'):
         end = time.time()
         elapsed_time = end - start
         print("the session was " + str(elapsed_time) + " seconds long")
-        print(data)
-
         break
 
 cap.release()
