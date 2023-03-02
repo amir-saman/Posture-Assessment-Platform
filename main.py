@@ -3,6 +3,8 @@ import time
 import math as m
 import mediapipe as mp
 from notify_run import Notify
+import pandas as pd
+
 
 
 # Calculate distance
@@ -23,12 +25,19 @@ def findAngle(x1, y1, x2, y2):
 notify = Notify()
 run_once = 0
 
-# Function to send alert when bad posture detected
-# def sendWarning():
-#     pass
+sleep_time = 0.25
 
+total_neck_and_torso_score = 0
+total_torso_score = 0
+total_neck_score = 0
 
-# Initilise bad frame counter
+current_neck_score_data = [] # = [time, neck angle, RULA Score]
+current_torso_score_data = []
+# cumulative_neck_torso_score_data = []
+cumulative_neck_score_data = [] # = [time, cumulative RULA score]
+cumulative_torso_score_data = []
+
+# Initilise frame counters
 bad_frames = 0
 
 # Font type
@@ -103,37 +112,135 @@ while cap.isOpened():
     torso_angle = findAngle(l_hip_x, l_hip_y, l_shldr_x, l_shldr_y)
 
     # Draw landmarks
-    cv2.circle(image, (l_shldr_x, l_shldr_y), 7, yellow, -1)
+    cv2.circle(image, (l_shldr_x, l_shldr_y), 7, pink, -1)
     cv2.circle(image, (l_ear_x, l_ear_y), 7, yellow, -1)
 
     cv2.circle(image, (l_shldr_x, l_shldr_y - 100), 7, yellow, -1)
-    cv2.circle(image, (r_shldr_x, r_shldr_y), 7, blue, -1)
+    cv2.circle(image, (r_shldr_x, r_shldr_y), 7, pink, -1)
     cv2.circle(image, (l_hip_x, l_hip_y), 7, yellow, -1)
 
     cv2.circle(image, (l_hip_x, l_hip_y - 100), 7, yellow, -1)
 
-    # Draw text, Posture and angle inclination
     # Text string for display
     angle_text_string = 'Neck : ' + str(int(neck_angle)) + '  Torso : ' + str(int(torso_angle))
 
-    # Decide if the posture is good or bad
-    if neck_angle < 40 and torso_angle < 10:
-        bad_frames = 0
 
-        cv2.putText(image, angle_text_string, (10, 30), font, 0.9, light_green, 2)
-        cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, light_green, 2)
-        cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, light_green, 2)
+
+    # Assess posture and score it based on RULA
+    if torso_angle == 0:
+        current_torso_score_data.append((round((time.time() - start), 2), torso_angle, 1))
+
+        total_torso_score = total_torso_score + 1
+
+        cumulative_torso_score_data.append((round((time.time() - start), 2), total_torso_score))
+
+        cv2.putText(image, angle_text_string, (10, 30), font, 0.9, blue, 2)
+        cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, blue, 2)
+        cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, blue, 2)
+
+        # Join landmarks.
+        cv2.line(image, (l_hip_x, l_hip_y), (l_shldr_x, l_shldr_y), blue, 4)
+        cv2.line(image, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), blue, 4)
+
+        time.sleep(sleep_time)
+
+
+    if torso_angle < 20 and torso_angle != 0:
+        current_torso_score_data.append((round((time.time() - start), 2), torso_angle, 2))
+
+        total_torso_score = total_torso_score + 2
+
+        cumulative_torso_score_data.append((round((time.time() - start), 2), total_torso_score))
+
+        cv2.putText(image, angle_text_string, (10, 30), font, 0.9, green, 2)
+        cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, green, 2)
+        cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, green, 2)
+
+        # Join landmarks.
+        cv2.line(image, (l_hip_x, l_hip_y), (l_shldr_x, l_shldr_y), green, 4)
+        cv2.line(image, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), green, 4)
+
+        time.sleep(sleep_time)
+
+
+    if torso_angle < 60 and torso_angle >= 20:
+        current_torso_score_data.append((round((time.time() - start), 2), torso_angle, 3))
+
+        total_torso_score = total_torso_score + 3
+
+        cumulative_torso_score_data.append((round((time.time() - start), 2), total_torso_score))
+
+        cv2.putText(image, angle_text_string, (10, 30), font, 0.9, yellow, 2)
+        cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, yellow, 2)
+        cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, yellow, 2)
+
+        # Join landmarks.
+        cv2.line(image, (l_hip_x, l_hip_y), (l_shldr_x, l_shldr_y), yellow, 4)
+        cv2.line(image, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), yellow, 4)
+
+        time.sleep(sleep_time)
+
+
+    if torso_angle >= 60:
+        current_torso_score_data.append((round((time.time() - start), 2), torso_angle, 4))
+
+        total_torso_score = total_torso_score + 4
+
+        cumulative_torso_score_data.append((round((time.time() - start), 2), total_torso_score))
+
+        cv2.putText(image, angle_text_string, (10, 30), font, 0.9, red, 2)
+        cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, red, 2)
+        cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, red, 2)
+
+        # Join landmarks.
+        cv2.line(image, (l_hip_x, l_hip_y), (l_shldr_x, l_shldr_y), red, 4)
+        cv2.line(image, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), red, 4)
+
+        #time.sleep(sleep_time)
+
+
+
+
+    #decide if the neck posture is good or bad
+
+    if neck_angle < 10 and neck_angle >= 0:
+        current_neck_score_data.append((round((time.time() - start), 2), torso_angle, 1))
+
+        total_neck_score = total_neck_score + 1
+
+        cumulative_neck_score_data.append((round((time.time() - start), 2), total_neck_score))
+
+        cv2.putText(image, angle_text_string, (10, 30), font, 0.9, green, 2)
+        cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, green, 2)
+        cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, green, 2)
 
         # Join landmarks.
         cv2.line(image, (l_shldr_x, l_shldr_y), (l_ear_x, l_ear_y), green, 4)
         cv2.line(image, (l_shldr_x, l_shldr_y), (l_shldr_x, l_shldr_y - 100), green, 4)
-        cv2.line(image, (l_hip_x, l_hip_y), (l_shldr_x, l_shldr_y), green, 4)
-        cv2.line(image, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), green, 4)
 
-        time.sleep(0.25)
 
-    else:
-        bad_frames += 1
+    if neck_angle < 20 and neck_angle >=10:
+        current_neck_score_data.append((round((time.time() - start), 2), torso_angle, 2))
+
+        total_neck_score = total_neck_score + 2
+
+        cumulative_neck_score_data.append((round((time.time() - start), 2), total_neck_score))
+
+        cv2.putText(image, angle_text_string, (10, 30), font, 0.9, yellow, 2)
+        cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, yellow, 2)
+        cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, yellow, 2)
+
+        # Join landmarks.
+        cv2.line(image, (l_shldr_x, l_shldr_y), (l_ear_x, l_ear_y), yellow, 4)
+        cv2.line(image, (l_shldr_x, l_shldr_y), (l_shldr_x, l_shldr_y - 100), yellow, 4)
+
+
+    if neck_angle >= 20:
+        current_neck_score_data.append((round((time.time() - start), 2), torso_angle, 3))
+
+        total_neck_score = total_neck_score + 3
+
+        cumulative_neck_score_data.append((round((time.time() - start), 2), total_neck_score))
 
         cv2.putText(image, angle_text_string, (10, 30), font, 0.9, red, 2)
         cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, red, 2)
@@ -142,10 +249,6 @@ while cap.isOpened():
         # Join landmarks.
         cv2.line(image, (l_shldr_x, l_shldr_y), (l_ear_x, l_ear_y), red, 4)
         cv2.line(image, (l_shldr_x, l_shldr_y), (l_shldr_x, l_shldr_y - 100), red, 4)
-        cv2.line(image, (l_hip_x, l_hip_y), (l_shldr_x, l_shldr_y), red, 4)
-        cv2.line(image, (l_hip_x, l_hip_y), (l_hip_x, l_hip_y - 100), red, 4)
-
-        time.sleep(0.25)
 
     # Calculate the duration of posture
     bad_time = (1 / fps) * bad_frames
@@ -154,20 +257,39 @@ while cap.isOpened():
     # If you stay in bad posture for more than x seconds send warning
 
     if bad_time > 3:
-        # sendWarning()
         if run_once == 0:
             notify.send('test')
             run_once = 1
+            bad_time = 0
     else:
         run_once = 0
-
-    #########################################################################################
 
     cv2.imshow('Posture Assessment', image)
     if cv2.waitKey(5) & 0xFF == ord('q'):
         end = time.time()
         elapsed_time = end - start
         print("the session was " + str(elapsed_time) + " seconds long")
+        print(total_torso_score)
+
+        # Convert the list of tuples to a pandas DataFrame
+        cumulative_torso_score_data_plot = pd.DataFrame(cumulative_torso_score_data, columns=['Time Elapsed', 'Cumulative Torso Score'])
+        current_torso_score_data_plot = pd.DataFrame(current_torso_score_data, columns=['Time Elapsed', 'Torso Angle', 'Torso Score'])
+
+        cumulative_neck_score_data_plot = pd.DataFrame(cumulative_neck_score_data, columns=['Time Elapsed', 'Cumulative Neck Score'])
+        current_neck_score_data_plot = pd.DataFrame(current_neck_score_data, columns=['Time Elapsed', 'Neck Angle', 'Neck Score'])
+
+        # cumulative_neck_torso_score_data_plot = pd.DataFrame(cumulative_neck_torso_score_data, columns=['Time Elapsed', 'Cumulative Neck & Torso Score'])
+
+
+        # Save the DataFrame to an excel file
+        cumulative_torso_score_data_plot.to_excel('Cumulative Torso Score.xlsx', index=False)
+        current_torso_score_data_plot.to_excel('Torso Score at Any Given Point.xlsx', index=False)
+
+        cumulative_neck_score_data_plot.to_excel('Cumulative Neck Score.xlsx', index=False)
+        current_neck_score_data_plot.to_excel('Neck Score at Any Given Point.xlsx', index=False)
+
+        #cumulative_neck_torso_score_data_plot.to_excel('Cumulative Neck & Torso Score.xlsx', index=False)
+
         break
 
 cap.release()
