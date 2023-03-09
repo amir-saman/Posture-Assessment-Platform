@@ -25,7 +25,7 @@ def findAngle(x1, y1, x2, y2):
 notify = Notify()
 run_once = 0
 
-sleep_time = 0.25
+sleep_time = 1
 
 total_neck_and_torso_score = 0
 total_torso_score = 0
@@ -34,6 +34,7 @@ total_neck_score = 0
 current_neck_score_data = [] # = [time, neck angle, RULA Score]
 current_torso_score_data = []
 # cumulative_neck_torso_score_data = []
+current_neck_torso_score_data = [] #time, neck score, torso score, Overall according to RULA
 cumulative_neck_score_data = [] # = [time, cumulative RULA score]
 cumulative_torso_score_data = []
 
@@ -102,7 +103,7 @@ while cap.isOpened():
     offset = findDistance(l_shldr_x, l_shldr_y, r_shldr_x, r_shldr_y)
 
     # Align the camera to point at the side view of the person
-    if offset < 75:
+    if offset <= 120 and offset > 110:
         cv2.putText(image, str(int(offset)) + ' Aligned', (w - 150, 30), font, 0.9, green, 2)
     else:
         cv2.putText(image, str(int(offset)) + ' Not Aligned', (w - 150, 30), font, 0.9, red, 2)
@@ -271,6 +272,42 @@ while cap.isOpened():
         print("the session was " + str(elapsed_time) + " seconds long")
         print(total_torso_score)
 
+        for i in range(len(current_neck_score_data)):
+
+            if current_neck_score_data[i][2] == 1:
+                match current_torso_score_data[i][2]:
+                    case 1:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 1, 1, 1))
+                    case 2:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 1, 2, 2))
+                    case 3:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 1, 3, 3))
+                    case 4:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 1, 4, 5))
+
+            if current_neck_score_data[i][2] == 2:
+                match current_torso_score_data[i][2]:
+                    case 1:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 2, 1, 2))
+                    case 2:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 2, 2, 2))
+                    case 3:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 2, 3, 4))
+                    case 4:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 2, 4, 5))
+
+            if current_neck_score_data[i][2] == 3:
+                match current_torso_score_data[i][2]:
+                    case 1:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 3, 1, 3))
+                    case 2:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 3, 2, 3))
+                    case 3:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 3, 3, 4))
+                    case 4:
+                        current_neck_torso_score_data.append((current_neck_score_data[i][0], 3, 4, 5))
+
+
         # Convert the list of tuples to a pandas DataFrame
         cumulative_torso_score_data_plot = pd.DataFrame(cumulative_torso_score_data, columns=['Time Elapsed', 'Cumulative Torso Score'])
         current_torso_score_data_plot = pd.DataFrame(current_torso_score_data, columns=['Time Elapsed', 'Torso Angle', 'Torso Score'])
@@ -279,6 +316,9 @@ while cap.isOpened():
         current_neck_score_data_plot = pd.DataFrame(current_neck_score_data, columns=['Time Elapsed', 'Neck Angle', 'Neck Score'])
 
         # cumulative_neck_torso_score_data_plot = pd.DataFrame(cumulative_neck_torso_score_data, columns=['Time Elapsed', 'Cumulative Neck & Torso Score'])
+
+        current_neck_torso_score_data_plot = pd.DataFrame(current_neck_torso_score_data, columns=['Time Elapsed', 'Neck Score', 'Torso Score', 'Combined RULA Score'])
+
 
 
         # Save the DataFrame to an excel file
@@ -289,6 +329,9 @@ while cap.isOpened():
         current_neck_score_data_plot.to_excel('Neck Score at Any Given Point.xlsx', index=False)
 
         #cumulative_neck_torso_score_data_plot.to_excel('Cumulative Neck & Torso Score.xlsx', index=False)
+
+        current_neck_torso_score_data_plot.to_excel('Current Neck & Torso Combined Score.xlsx', index=False)
+
 
         break
 
