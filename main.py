@@ -4,7 +4,10 @@ import math as m
 import mediapipe as mp
 from notify_run import Notify
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import os
+from threading import Thread
 
 
 # Calculate distance
@@ -42,13 +45,27 @@ def findAngle2(x1, y1, x2, y2, x3, y3):  # Finds angle from 3 points
     return angle_deg
 
 
+
+# Ask for sleep time
+sleep_time = float(input('How many seconds between frames (recommendation: 1 for long sessions or 0.1 for short sessions)? '))
+
+bad_time = 0
+notif_frequency = 0
+if sleep_time < 1:
+    notif_frequency = 1
+else:
+    notif_frequency = 1/sleep_time
+
+
 # Initialise Notify
 notify = Notify()
 notify_channel = input("What is your Notify channel? ")
 os.system("notify-run configure " + notify_channel)
 run_once = 0
 
-sleep_time = 0
+print('Sit far enough so that your body (from your ship to your head) just about fits in the frame with around 20 cm '
+      'wiggle room')
+print("Make sure the camera sees your side view and 'Aligned' is written in green in the top right corner")
 
 total_neck_and_torso_score = 0
 total_torso_score = 0
@@ -66,6 +83,22 @@ current_lower_arm_score_data = []
 current_arm_wrist_score_data = []  # [time, Combined Rula Score]
 
 current_final_rula_score_data = []  # [time, neck & torso score, arm & wrist, Final RULA Score]
+
+torso_score = 0
+neck_score = 0
+upper_arm_score = 0
+lower_arm_score = 0
+neck_torso_score = 0
+arm_wrist_score = 0
+
+x_realtime_graph = []
+y_realtime_graph = []
+
+# Graph Attempt
+#plt.ion()
+#
+# figure, ax = plt.subplots(figsize=(10, 8))
+# line1, = ax.plot(x_realtime_graph, y_realtime_graph)
 
 # Initilise frame counters
 bad_frames = 0
@@ -123,6 +156,9 @@ while cap.isOpened():
 
     try:
 
+        # Set Time Elapsed
+        current_time = round((time.time() - start), 2)
+
         # Get the landmark coordinates
         # Left shoulder
         l_shldr_x = int(lm.landmark[lmPose.LEFT_SHOULDER].x * w)
@@ -148,8 +184,8 @@ while cap.isOpened():
         # Calculate distance between left shoulder and right shoulder points
         offset = findDistance(l_shldr_x, l_shldr_y, r_shldr_x, r_shldr_y)
 
-        # Align the camera to point at the side view of the person
-        if 120 >= offset > 110:
+        # Align the camera to point at the side view of the user
+        if 90 >= offset > 45:
             cv2.putText(image, str(int(offset)) + ' Aligned', (w - 150, 30), font, 0.9, green, 2)
         else:
             cv2.putText(image, str(int(offset)) + ' Not Aligned', (w - 150, 30), font, 0.9, red, 2)
@@ -159,9 +195,9 @@ while cap.isOpened():
         torso_angle = findAngle(l_hip_x, l_hip_y, l_shldr_x, l_shldr_y)
 
         upper_arm_angle = findAngle(l_elbow_x, l_elbow_y, l_shldr_x,
-                                    l_shldr_y + 40)  # Change +40 later when calibrating
+                                    l_shldr_y)
         lower_arm_angle = findAngle2(l_wrist_x, l_wrist_y, l_elbow_x, l_elbow_y, l_shldr_x,
-                                     l_shldr_y + 40)  # Change +40 later when calibrating
+                                     l_shldr_y)
 
         # Draw landmarks
         cv2.circle(image, (l_shldr_x, l_shldr_y), 7, pink, -1)
@@ -177,18 +213,22 @@ while cap.isOpened():
         cv2.circle(image, (l_wrist_x, l_wrist_y), 7, dark_blue, -1)
 
         # Text string for display
-        angle_text_string = 'Neck : ' + str(int(neck_angle)) + '  Torso : ' + str(int(torso_angle))
+        angle_text_string = 'Neck: ' + str(int(neck_angle)) + '  Torso: ' + str(int(torso_angle)) + ' Upper Arm: ' + str(int(upper_arm_angle)) + ' Lower Arm: ' + str(int(lower_arm_angle))
 
         cv2.putText(image, angle_text_string, (10, 30), font, 0.9, pink, 2)
+        cv2.putText(image, 'Press Q to leave', (10, 60), font, 0.9, pink, 2)
+
 
         # Assess posture and score it based on RULA
         match torso_angle:
             case 0:
-                current_torso_score_data.append((round((time.time() - start), 2), torso_angle, 1))
+                current_torso_score_data.append((current_time, torso_angle, 1))
 
                 total_torso_score = total_torso_score + 1
 
-                cumulative_torso_score_data.append((round((time.time() - start), 2), total_torso_score))
+                torso_score = 1
+
+                cumulative_torso_score_data.append((current_time, total_torso_score))
 
                 cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, blue, 2)
 
@@ -199,11 +239,13 @@ while cap.isOpened():
                 time.sleep(sleep_time)
 
             case angle if angle < 20 and angle != 0:
-                current_torso_score_data.append((round((time.time() - start), 2), torso_angle, 2))
+                current_torso_score_data.append((current_time, torso_angle, 2))
 
                 total_torso_score = total_torso_score + 2
 
-                cumulative_torso_score_data.append((round((time.time() - start), 2), total_torso_score))
+                torso_score = 2
+
+                cumulative_torso_score_data.append((current_time, total_torso_score))
 
                 cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, green, 2)
 
@@ -214,11 +256,15 @@ while cap.isOpened():
                 time.sleep(sleep_time)
 
             case angle if 60 > angle >= 20:
-                current_torso_score_data.append((round((time.time() - start), 2), torso_angle, 3))
+                current_torso_score_data.append((current_time, torso_angle, 3))
 
                 total_torso_score = total_torso_score + 3
 
-                cumulative_torso_score_data.append((round((time.time() - start), 2), total_torso_score))
+                torso_score = 3
+
+                # bad_time = bad_time + 1
+
+                cumulative_torso_score_data.append((current_time, total_torso_score))
 
                 cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, yellow, 2)
 
@@ -229,11 +275,15 @@ while cap.isOpened():
                 time.sleep(sleep_time)
 
             case angle if angle >= 60:
-                current_torso_score_data.append((round((time.time() - start), 2), torso_angle, 4))
+                current_torso_score_data.append((current_time, torso_angle, 4))
 
                 total_torso_score = total_torso_score + 4
 
-                cumulative_torso_score_data.append((round((time.time() - start), 2), total_torso_score))
+                torso_score = 4
+
+                # bad_time = bad_time + 1
+
+                cumulative_torso_score_data.append((current_time, total_torso_score))
 
                 cv2.putText(image, str(int(torso_angle)), (l_hip_x + 10, l_hip_y), font, 0.9, red, 2)
 
@@ -245,11 +295,13 @@ while cap.isOpened():
 
         match neck_angle:
             case angle if 10 > angle >= 0:
-                current_neck_score_data.append((round((time.time() - start), 2), neck_angle, 1))
+                current_neck_score_data.append((current_time, neck_angle, 1))
 
                 total_neck_score = total_neck_score + 1
 
-                cumulative_neck_score_data.append((round((time.time() - start), 2), total_neck_score))
+                neck_score = 1
+
+                cumulative_neck_score_data.append((current_time, total_neck_score))
 
                 cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, green, 2)
 
@@ -258,11 +310,15 @@ while cap.isOpened():
                 cv2.line(image, (l_shldr_x, l_shldr_y), (l_shldr_x, l_shldr_y - 100), green, 4)
 
             case angle if 20 > angle >= 10:
-                current_neck_score_data.append((round((time.time() - start), 2), neck_angle, 2))
+                current_neck_score_data.append((current_time, neck_angle, 2))
 
                 total_neck_score = total_neck_score + 2
 
-                cumulative_neck_score_data.append((round((time.time() - start), 2), total_neck_score))
+                neck_score = 2
+
+                # bad_time = bad_time + 1
+
+                cumulative_neck_score_data.append((current_time, total_neck_score))
 
                 cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, yellow, 2)
 
@@ -271,11 +327,15 @@ while cap.isOpened():
                 cv2.line(image, (l_shldr_x, l_shldr_y), (l_shldr_x, l_shldr_y - 100), yellow, 4)
 
             case angle if angle >= 20:
-                current_neck_score_data.append((round((time.time() - start), 2), neck_angle, 3))
+                current_neck_score_data.append((current_time, neck_angle, 3))
 
                 total_neck_score = total_neck_score + 3
 
-                cumulative_neck_score_data.append((round((time.time() - start), 2), total_neck_score))
+                neck_score = 3
+
+                # bad_time = bad_time + 1
+
+                cumulative_neck_score_data.append((current_time, total_neck_score))
 
                 cv2.putText(image, str(int(neck_angle)), (l_shldr_x + 10, l_shldr_y), font, 0.9, red, 2)
 
@@ -285,7 +345,9 @@ while cap.isOpened():
 
         match upper_arm_angle:
             case angle if angle <= 20:
-                current_upper_arm_score_data.append((round((time.time() - start), 2), upper_arm_angle, 1))
+                current_upper_arm_score_data.append((current_time, upper_arm_angle, 1))
+
+                upper_arm_score = 1
 
                 cv2.putText(image, str(int(upper_arm_angle)), (l_shldr_x - 30, l_shldr_y), font, 0.9, blue, 2)
 
@@ -293,7 +355,9 @@ while cap.isOpened():
                 cv2.line(image, (l_elbow_x, l_elbow_y), (l_shldr_x, l_shldr_y), blue, 4)
 
             case angle if 20 < angle <= 45:
-                current_upper_arm_score_data.append((round((time.time() - start), 2), upper_arm_angle, 2))
+                current_upper_arm_score_data.append((current_time, upper_arm_angle, 2))
+
+                upper_arm_score = 2
 
                 cv2.putText(image, str(int(upper_arm_angle)), (l_shldr_x - 30, l_shldr_y), font, 0.9, green, 2)
 
@@ -301,15 +365,23 @@ while cap.isOpened():
                 cv2.line(image, (l_elbow_x, l_elbow_y), (l_shldr_x, l_shldr_y), green, 4)
 
             case angle if 45 < angle <= 90:
-                current_upper_arm_score_data.append((round((time.time() - start), 2), upper_arm_angle, 3))
+                current_upper_arm_score_data.append((current_time, upper_arm_angle, 3))
 
                 cv2.putText(image, str(int(upper_arm_angle)), (l_shldr_x - 30, l_shldr_y), font, 0.9, yellow, 2)
+
+                upper_arm_score = 3
+
+                # bad_time = bad_time + 1
 
                 # Join landmarks.
                 cv2.line(image, (l_elbow_x, l_elbow_y), (l_shldr_x, l_shldr_y), yellow, 4)
 
             case angle if angle > 90:
-                current_upper_arm_score_data.append((round((time.time() - start), 2), upper_arm_angle, 4))
+                current_upper_arm_score_data.append((current_time, upper_arm_angle, 4))
+
+                upper_arm_score = 4
+
+                # bad_time = bad_time + 1
 
                 cv2.putText(image, str(int(upper_arm_angle)), (l_shldr_x - 30, l_shldr_y), font, 0.9, red, 2)
 
@@ -318,15 +390,21 @@ while cap.isOpened():
 
         match lower_arm_angle:
             case angle if 60 <= angle < 100:
-                current_lower_arm_score_data.append((round((time.time() - start), 2), lower_arm_angle, 1))
+                current_lower_arm_score_data.append((current_time, lower_arm_angle, 1))
 
-                cv2.putText(image, str(int(upper_arm_angle)), (l_elbow_x - 30, l_elbow_y), font, 0.9, green, 2)
+                cv2.putText(image, str(int(lower_arm_angle)), (l_elbow_x - 30, l_elbow_y), font, 0.9, green, 2)
+
+                lower_arm_score = 1
 
                 # Join landmarks.
                 cv2.line(image, (l_elbow_x, l_elbow_y), (l_wrist_x, l_wrist_y), green, 4)
 
             case angle if 0 <= angle < 60:
-                current_lower_arm_score_data.append((round((time.time() - start), 2), lower_arm_angle, 2))
+                current_lower_arm_score_data.append((current_time, lower_arm_angle, 2))
+
+                lower_arm_score = 2
+
+                # bad_time = bad_time + 1
 
                 cv2.putText(image, str(int(lower_arm_angle)), (l_elbow_x - 30, l_elbow_y), font, 0.9, yellow, 2)
 
@@ -334,25 +412,359 @@ while cap.isOpened():
                 cv2.line(image, (l_elbow_x, l_elbow_y), (l_wrist_x, l_wrist_y), yellow, 4)
 
             case angle if angle > 100:
-                current_lower_arm_score_data.append((round((time.time() - start), 2), lower_arm_angle, 2))
+                current_lower_arm_score_data.append((current_time, lower_arm_angle, 2))
+
+                upper_arm_score = 2
+
+                bad_time = bad_time + 1
 
                 cv2.putText(image, str(int(lower_arm_angle)), (l_elbow_x - 30, l_elbow_y), font, 0.9, red, 2)
 
                 # Join landmarks.
                 cv2.line(image, (l_elbow_x, l_elbow_y), (l_wrist_x, l_wrist_y), red, 4)
 
-        # Calculate the duration of posture
-        bad_time = (1 / fps) * bad_frames
+        ## Calculates RULA score for graph
 
-        # If you stay in bad posture for more than x seconds send warning
+        # if neck_score == 1:
+        #     match torso_score:
+        #         case 1:
+        #             neck_torso_score = 1
+        #         case 2:
+        #             neck_torso_score = 2
+        #         case 3:
+        #             neck_torso_score = 3
+        #         case 4:
+        #             neck_torso_score = 5
+        #
+        # if neck_score == 2:
+        #     match torso_score:
+        #         case 1:
+        #             neck_torso_score = 2
+        #         case 2:
+        #             neck_torso_score = 2
+        #         case 3:
+        #             neck_torso_score = 4
+        #         case 4:
+        #             neck_torso_score = 5
+        #
+        # if neck_score == 3:
+        #     match torso_score:
+        #         case 1:
+        #             neck_torso_score = 3
+        #         case 2:
+        #             neck_torso_score = 3
+        #         case 3:
+        #             neck_torso_score = 4
+        #         case 4:
+        #             neck_torso_score = 5
+        #
+        # if lower_arm_score == 1:
+        #     match upper_arm_score:
+        #         case 1:
+        #             arm_wrist_score = 2
+        #         case 2:
+        #             arm_wrist_score = 3
+        #         case 3:
+        #             arm_wrist_score = 4
+        #         case 4:
+        #             arm_wrist_score = 4
+        #         case 5:
+        #             arm_wrist_score = 6
+        #         case 6:
+        #             arm_wrist_score = 8
+        #
+        # if lower_arm_score == 1:
+        #     match upper_arm_score:
+        #         case 1:
+        #             arm_wrist_score = 2
+        #         case 2:
+        #             arm_wrist_score = 3
+        #         case 3:
+        #             arm_wrist_score = 4
+        #         case 4:
+        #             arm_wrist_score = 4
+        #         case 5:
+        #             arm_wrist_score = 6
+        #         case 6:
+        #             arm_wrist_score = 8
+        #
+        # if lower_arm_score == 2:
+        #     match upper_arm_score:
+        #         case 1:
+        #             arm_wrist_score = 3
+        #         case 2:
+        #             arm_wrist_score = 3
+        #         case 3:
+        #             arm_wrist_score = 4
+        #         case 4:
+        #             arm_wrist_score = 4
+        #         case 5:
+        #             arm_wrist_score = 6
+        #         case 6:
+        #             arm_wrist_score = 8
+        #
+        # if lower_arm_score == 3:
+        #     match upper_arm_score:
+        #         case 1:
+        #             arm_wrist_score = 3
+        #         case 2:
+        #             arm_wrist_score = 4
+        #         case 3:
+        #             arm_wrist_score = 4
+        #         case 4:
+        #             arm_wrist_score = 5
+        #         case 5:
+        #             arm_wrist_score = 7
+        #         case 6:
+        #             arm_wrist_score = 9
+        #
+        # if neck_torso_score == 1:
+        #     match arm_wrist_score:
+        #         case 1:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(1)
+        #         case 2:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(2)
+        #         case 3:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 4:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 5:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 6:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 7:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case wrist_arm_score if wrist_arm_score >= 8:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #
+        # if neck_torso_score == 2:
+        #     match arm_wrist_score:
+        #         case 1:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(2)
+        #         case 2:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(2)
+        #         case 3:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 4:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 5:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 6:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 7:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case wrist_arm_score if wrist_arm_score >= 8:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #
+        # if neck_torso_score == 3:
+        #     match arm_wrist_score:
+        #         case 1:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 2:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 3:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 4:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 5:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 6:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case 7:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #         case wrist_arm_score if wrist_arm_score >= 8:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #
+        # if neck_torso_score == 4:
+        #     match arm_wrist_score:
+        #         case 1:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(3)
+        #         case 2:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 3:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 4:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 5:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case 6:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #         case 7:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #         case wrist_arm_score if wrist_arm_score >= 8:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #
+        # if neck_torso_score == 5:
+        #     match arm_wrist_score:
+        #         case 1:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 2:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 3:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(4)
+        #         case 4:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case 5:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #         case 6:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #         case 7:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #         case wrist_arm_score if wrist_arm_score >= 8:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #
+        # if neck_torso_score == 6:
+        #     match arm_wrist_score:
+        #         case 1:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case 2:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case 3:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case 4:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #         case 5:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #         case 6:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #         case 7:
+        #
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #         case wrist_arm_score if wrist_arm_score >= 8:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #
+        # if neck_torso_score >= 7:
+        #     match arm_wrist_score:
+        #         case 1:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case 2:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(5)
+        #         case 3:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #         case 4:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(6)
+        #         case 5:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #         case 6:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #         case 7:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
+        #         case wrist_arm_score if wrist_arm_score >= 8:
+        #             x_realtime_graph.append(current_time)
+        #             y_realtime_graph.append(7)
 
-        if bad_time > 3:
+        # Graph Attempt
+        # figure.canvas.draw()
+        # figure.canvas.flush_events()
+
+        # If you stay in bad posture for more than 1 second send warning
+        if bad_time > notif_frequency:
             if run_once == 0:
-                notify.send('test')
+                notify.send('IMPORTANT: SIT UP NOW')
                 run_once = 1
                 bad_time = 0
+                print('notification sent')
         else:
             run_once = 0
+
+
+
 
     except:
         print("no one is in the frame")
@@ -361,8 +773,8 @@ while cap.isOpened():
     if cv2.waitKey(5) & 0xFF == ord('q'):
         end = time.time()
         elapsed_time = end - start
+        elapsed_time = round(elapsed_time)
         print("the session was " + str(elapsed_time) + " seconds long")
-        print(total_torso_score)
 
         for i in range(len(current_neck_score_data)):
             if current_neck_score_data[i][2] == 1:
